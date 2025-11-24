@@ -1,0 +1,460 @@
+#include <iostream>
+#include <vector>
+#include <string>
+#include <limits>
+#include <fstream>
+#include <sstream>
+
+using namespace std;
+
+// ===================== DATA MODELS =====================
+
+struct Book {
+    int id;
+    string title;
+    string author;
+    bool isIssued;
+    int issuedToStudentId; // -1 if not issued
+
+    Book() : id(0), isIssued(false), issuedToStudentId(-1) {}
+
+    Book(int _id, const string& _title, const string& _author)
+        : id(_id), title(_title), author(_author),
+          isIssued(false), issuedToStudentId(-1) {}
+};
+
+struct Student {
+    int id;
+    string name;
+    string className;
+    vector<int> borrowedBookIds;
+
+    Student() : id(0) {}
+
+    Student(int _id, const string& _name, const string& _className)
+        : id(_id), name(_name), className(_className) {}
+};
+
+// ===================== LIBRARY SYSTEM =====================
+
+class LibrarySystem {
+private:
+    vector<Book> books;
+    vector<Student> students;
+    int nextBookId;
+    int nextStudentId;
+
+    const string booksFile = "books.txt";
+    const string studentsFile = "students.txt";
+
+public:
+    LibrarySystem() : nextBookId(1), nextStudentId(1) {
+        loadDataFromFiles();
+    }
+
+    // ------------ Helper find functions ------------
+    int findBookIndexById(int id) {
+        for (size_t i = 0; i < books.size(); ++i) {
+            if (books[i].id == id) return (int)i;
+        }
+        return -1;
+    }
+
+    int findStudentIndexById(int id) {
+        for (size_t i = 0; i < students.size(); ++i) {
+            if (students[i].id == id) return (int)i;
+        }
+        return -1;
+    }
+
+    // ================== FILE I/O ==================
+
+    // Format: id|title|author|isIssued|issuedToStudentId
+    void loadBooksFromFile() {
+        books.clear();
+        ifstream fin(booksFile);
+        if (!fin.is_open()) {
+            // File not present yet, not an error
+            return;
+        }
+
+        string line;
+        while (getline(fin, line)) {
+            if (line.empty()) continue;
+            stringstream ss(line);
+            string part;
+
+            Book b;
+            string isIssuedStr, issuedToStr;
+
+            getline(ss, part, '|');
+            b.id = stoi(part);
+
+            getline(ss, b.title, '|');
+            getline(ss, b.author, '|');
+            getline(ss, isIssuedStr, '|');
+            getline(ss, issuedToStr, '|');
+
+            b.isIssued = (isIssuedStr == "1");
+            b.issuedToStudentId = stoi(issuedToStr);
+
+            books.push_back(b);
+
+            if (b.id >= nextBookId) {
+                nextBookId = b.id + 1;
+            }
+        }
+        fin.close();
+    }
+
+    // Format per line:
+    // id|name|className|bookId1,bookId2,bookId3
+    void loadStudentsFromFile() {
+        students.clear();
+        ifstream fin(studentsFile);
+        if (!fin.is_open()) {
+            return;
+        }
+
+        string line;
+        while (getline(fin, line)) {
+            if (line.empty()) continue;
+            stringstream ss(line);
+            string part;
+
+            Student s;
+            getline(ss, part, '|');
+            s.id = stoi(part);
+
+            getline(ss, s.name, '|');
+            getline(ss, s.className, '|');
+
+            string booksStr;
+            getline(ss, booksStr, '|');
+
+            s.borrowedBookIds.clear();
+            if (!booksStr.empty()) {
+                stringstream bs(booksStr);
+                string idStr;
+                while (getline(bs, idStr, ',')) {
+                    if (!idStr.empty()) {
+                        s.borrowedBookIds.push_back(stoi(idStr));
+                    }
+                }
+            }
+
+            students.push_back(s);
+            if (s.id >= nextStudentId) {
+                nextStudentId = s.id + 1;
+            }
+        }
+        fin.close();
+    }
+
+    void saveBooksToFile() {
+        ofstream fout(booksFile);
+        if (!fout.is_open()) {
+            cout << "⚠️ Error writing to " << booksFile << "\n";
+            return;
+        }
+
+        for (const auto& b : books) {
+            fout << b.id << "|"
+                 << b.title << "|"
+                 << b.author << "|"
+                 << (b.isIssued ? "1" : "0") << "|"
+                 << b.issuedToStudentId << "|\n";
+        }
+        fout.close();
+    }
+
+    void saveStudentsToFile() {
+        ofstream fout(studentsFile);
+        if (!fout.is_open()) {
+            cout << "⚠️ Error writing to " << studentsFile << "\n";
+            return;
+        }
+
+        for (const auto& s : students) {
+            fout << s.id << "|"
+                 << s.name << "|"
+                 << s.className << "|";
+
+            // write borrowed book IDs as comma separated
+            for (size_t i = 0; i < s.borrowedBookIds.size(); ++i) {
+                fout << s.borrowedBookIds[i];
+                if (i + 1 < s.borrowedBookIds.size()) {
+                    fout << ",";
+                }
+            }
+            fout << "|\n";
+        }
+        fout.close();
+    }
+
+    void loadDataFromFiles() {
+        loadBooksFromFile();
+        loadStudentsFromFile();
+    }
+
+    void saveDataToFiles() {
+        saveBooksToFile();
+        saveStudentsToFile();
+    }
+
+    // ================== BOOK MANAGEMENT ==================
+
+    void addBook() {
+        cin.ignore(numeric_limits<streamsize>::max(), '\n'); // clear buffer
+
+        string title, author;
+        cout << "\nEnter Book Title: ";
+        getline(cin, title);
+        cout << "Enter Book Author: ";
+        getline(cin, author);
+
+        Book newBook(nextBookId++, title, author);
+        books.push_back(newBook);
+
+        saveBooksToFile();
+
+        cout << "✅ Book added successfully with ID: " << newBook.id << "\n";
+    }
+
+    void listAllBooks() {
+        cout << "\n=========== ALL BOOKS ===========\n";
+        if (books.empty()) {
+            cout << "No books in the library yet.\n";
+            return;
+        }
+
+        for (const auto& book : books) {
+            cout << "ID: " << book.id
+                 << " | Title: " << book.title
+                 << " | Author: " << book.author
+                 << " | Status: " << (book.isIssued ? "Issued" : "Available");
+            if (book.isIssued) {
+                cout << " (Issued to Student ID: " << book.issuedToStudentId << ")";
+            }
+            cout << "\n";
+        }
+    }
+
+    // ================== STUDENT MANAGEMENT ==================
+
+    void addStudent() {
+        cin.ignore(numeric_limits<streamsize>::max(), '\n'); // clear buffer
+
+        string name, className;
+        cout << "\nEnter Student Name: ";
+        getline(cin, name);
+        cout << "Enter Class/Section (e.g., 10A, 9B): ";
+        getline(cin, className);
+
+        Student newStudent(nextStudentId++, name, className);
+        students.push_back(newStudent);
+
+        saveStudentsToFile();
+
+        cout << "✅ Student added successfully with ID: " << newStudent.id << "\n";
+    }
+
+    void listAllStudents() {
+        cout << "\n=========== ALL STUDENTS ===========\n";
+        if (students.empty()) {
+            cout << "No students added yet.\n";
+            return;
+        }
+
+        for (const auto& student : students) {
+            cout << "ID: " << student.id
+                 << " | Name: " << student.name
+                 << " | Class: " << student.className
+                 << " | Books Taken: " << student.borrowedBookIds.size()
+                 << "\n";
+        }
+    }
+
+    // ================== ISSUE & RETURN ==================
+
+    void issueBookToStudent() {
+        if (books.empty() || students.empty()) {
+            cout << "\n⚠️ Add at least one student and one book before issuing.\n";
+            return;
+        }
+
+        int bookId, studentId;
+        cout << "\nEnter Book ID to Issue: ";
+        cin >> bookId;
+        cout << "Enter Student ID: ";
+        cin >> studentId;
+
+        int bookIndex = findBookIndexById(bookId);
+        int studentIndex = findStudentIndexById(studentId);
+
+        if (bookIndex == -1) {
+            cout << "❌ Book with ID " << bookId << " not found.\n";
+            return;
+        }
+        if (studentIndex == -1) {
+            cout << "❌ Student with ID " << studentId << " not found.\n";
+            return;
+        }
+        if (books[bookIndex].isIssued) {
+            cout << "⚠️ Book is already issued to Student ID: "
+                 << books[bookIndex].issuedToStudentId << ".\n";
+            return;
+        }
+
+        books[bookIndex].isIssued = true;
+        books[bookIndex].issuedToStudentId = studentId;
+        students[studentIndex].borrowedBookIds.push_back(bookId);
+
+        saveBooksToFile();
+        saveStudentsToFile();
+
+        cout << "✅ Book \"" << books[bookIndex].title
+             << "\" issued to " << students[studentIndex].name << ".\n";
+    }
+
+    void returnBookFromStudent() {
+        if (books.empty() || students.empty()) {
+            cout << "\n⚠️ No books or students available.\n";
+            return;
+        }
+
+        int bookId, studentId;
+        cout << "\nEnter Book ID to Return: ";
+        cin >> bookId;
+        cout << "Enter Student ID: ";
+        cin >> studentId;
+
+        int bookIndex = findBookIndexById(bookId);
+        int studentIndex = findStudentIndexById(studentId);
+
+        if (bookIndex == -1) {
+            cout << "❌ Book with ID " << bookId << " not found.\n";
+            return;
+        }
+        if (studentIndex == -1) {
+            cout << "❌ Student with ID " << studentId << " not found.\n";
+            return;
+        }
+        if (!books[bookIndex].isIssued || books[bookIndex].issuedToStudentId != studentId) {
+            cout << "⚠️ This book is not issued to this student.\n";
+            return;
+        }
+
+        // mark book as returned
+        books[bookIndex].isIssued = false;
+        books[bookIndex].issuedToStudentId = -1;
+
+        // remove book from student's borrowed list
+        auto& borrowed = students[studentIndex].borrowedBookIds;
+        for (auto it = borrowed.begin(); it != borrowed.end(); ++it) {
+            if (*it == bookId) {
+                borrowed.erase(it);
+                break;
+            }
+        }
+
+        saveBooksToFile();
+        saveStudentsToFile();
+
+        cout << "✅ Book returned successfully.\n";
+    }
+
+    void viewBooksOfStudent() {
+        if (students.empty()) {
+            cout << "\n⚠️ No students available.\n";
+            return;
+        }
+
+        int studentId;
+        cout << "\nEnter Student ID: ";
+        cin >> studentId;
+
+        int studentIndex = findStudentIndexById(studentId);
+        if (studentIndex == -1) {
+            cout << "❌ Student with ID " << studentId << " not found.\n";
+            return;
+        }
+
+        Student& s = students[studentIndex];
+        cout << "\nBooks taken by " << s.name << " (ID: " << s.id << ")\n";
+        if (s.borrowedBookIds.empty()) {
+            cout << "No books borrowed.\n";
+            return;
+        }
+
+        for (int bookId : s.borrowedBookIds) {
+            int bookIndex = findBookIndexById(bookId);
+            if (bookIndex != -1) {
+                cout << "Book ID: " << books[bookIndex].id
+                     << " | Title: " << books[bookIndex].title
+                     << " | Author: " << books[bookIndex].author << "\n";
+            }
+        }
+    }
+};
+
+// ===================== FRONT-END MENU =====================
+
+void showMenu() {
+    cout << "\n=====================================\n";
+    cout << "        SCHOOL LIBRARY SYSTEM        \n";
+    cout << "=====================================\n";
+    cout << "1. Add New Book\n";
+    cout << "2. Add New Student\n";
+    cout << "3. Issue Book to Student\n";
+    cout << "4. Return Book from Student\n";
+    cout << "5. List All Books\n";
+    cout << "6. List All Students\n";
+    cout << "7. View Books Taken by a Student\n";
+    cout << "0. Exit\n";
+    cout << "-------------------------------------\n";
+    cout << "Enter your choice: ";
+}
+
+int main() {
+    LibrarySystem lib;
+    int choice;
+
+    do {
+        showMenu();
+        cin >> choice;
+
+        switch (choice) {
+            case 1:
+                lib.addBook();
+                break;
+            case 2:
+                lib.addStudent();
+                break;
+            case 3:
+                lib.issueBookToStudent();
+                break;
+            case 4:
+                lib.returnBookFromStudent();
+                break;
+            case 5:
+                lib.listAllBooks();
+                break;
+            case 6:
+                lib.listAllStudents();
+                break;
+            case 7:
+                lib.viewBooksOfStudent();
+                break;
+            case 0:
+                cout << "\nSaving data & exiting... 👋\n";
+                // Data is already saved on each operation.
+                break;
+            default:
+                cout << "Invalid choice. Please try again.\n";
+        }
+
+    } while (choice != 0);
+
+    return 0;
+}
